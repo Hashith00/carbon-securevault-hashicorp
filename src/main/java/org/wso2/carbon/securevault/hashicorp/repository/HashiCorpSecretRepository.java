@@ -45,6 +45,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 
 import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.ADDRESS_PARAMETER;
+import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.APP_ROLE_AUTH_PATH_PARAMETER;
+import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.DEFAULT_APP_ROLE_AUTH_PATH;
 import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.DEFAULT_ENGINE_VERSION;
 import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.ENGINE_PATH_PARAMETER;
 import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.ENGINE_VERSION_PARAMETER;
@@ -62,6 +64,7 @@ public class HashiCorpSecretRepository implements SecretRepository {
 
     private static final Log LOG = LogFactory.getLog(HashiCorpSecretRepository.class);
     private static final String SLASH = "/";
+    private static final String AUTH_PATH_PREFIX = "auth/";
     private static final int HTTP_OK = 200;
 
     private SecretRepository parentRepository;
@@ -79,6 +82,7 @@ public class HashiCorpSecretRepository implements SecretRepository {
     private String accessToken;
     private String roleId;
     private String secretId;
+    private String appRoleAuthPath;
     private static File tokenFile;
 
     private enum AuthType {
@@ -121,6 +125,8 @@ public class HashiCorpSecretRepository implements SecretRepository {
 
             if (authType.equals(AuthType.APP_ROLE)) {
                 roleId = hashiCorpVaultConfigLoader.getProperty(ROLE_ID_PARAMETER);
+                appRoleAuthPath = getConfiguredAppRoleAuthPath(
+                        hashiCorpVaultConfigLoader.getProperty(APP_ROLE_AUTH_PATH_PARAMETER));
                 secretId = retrieveAuthDetails();
                 accessToken = retrieveServiceToken(roleId, secretId);
             } else {
@@ -348,7 +354,8 @@ public class HashiCorpSecretRepository implements SecretRepository {
             final VaultConfig config = vaultConfig.build();
 
             Vault vault = new Vault(config);
-            AuthResponse response = vault.auth().loginByAppRole(roleId, secretId);
+
+            AuthResponse response = vault.auth().loginByAppRole(appRoleAuthPath, roleId, secretId);
 
             String accessTokenTemp = response.getAuthClientToken();
 
@@ -378,6 +385,44 @@ public class HashiCorpSecretRepository implements SecretRepository {
             return null;
         }
         return trimmedNamespace;
+    }
+
+    /**
+     * Returns the AppRole auth mount path in the form expected by the Vault driver. The path is configured in the
+     * form "/auth/{mount}" (Eg: "/auth/approle/wso2") and defaults to "/auth/approle". Since the Vault driver builds
+     * the login URL as "/v1/auth/{mount}/login", the surrounding slashes and the "auth/" prefix are removed.
+     *
+     * @param authPath  The configured AppRole auth path.
+     * @return          The AppRole auth mount path relative to "auth/" (Eg: "approle/wso2").
+     */
+    private String getConfiguredAppRoleAuthPath(String authPath) {
+
+        if (StringUtils.isEmpty(StringUtils.strip(authPath))) {
+            authPath = DEFAULT_APP_ROLE_AUTH_PATH;
+        }
+
+        String mountPath = toAppRoleMountPath(authPath);
+        if (StringUtils.isEmpty(mountPath)) {
+            LOG.warn("Invalid AppRole auth path: " + authPath + ". Using the default path: "
+                    + DEFAULT_APP_ROLE_AUTH_PATH);
+            mountPath = toAppRoleMountPath(DEFAULT_APP_ROLE_AUTH_PATH);
+        }
+        return mountPath;
+    }
+
+    /**
+     * Removes the surrounding slashes and the "auth/" prefix from the given AppRole auth path.
+     *
+     * @param authPath  The AppRole auth path (Eg: "/auth/approle/wso2").
+     * @return          The AppRole auth mount path relative to "auth/" (Eg: "approle/wso2").
+     */
+    private String toAppRoleMountPath(String authPath) {
+
+        String mountPath = StringUtils.strip(authPath, " " + SLASH);
+        if (mountPath.startsWith(AUTH_PATH_PREFIX)) {
+            mountPath = StringUtils.strip(mountPath.substring(AUTH_PATH_PREFIX.length()), " " + SLASH);
+        }
+        return mountPath;
     }
 
     /**

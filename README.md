@@ -145,6 +145,10 @@ The file should be named according to your Operating System.
       # Create a new approle
       vault auth enable approle
    ```
+
+   **Note:** To enable AppRole on a custom auth path (Eg: `/auth/approle/wso2`), use
+   `vault auth enable -path=approle/wso2 approle`, replace `auth/approle` with `auth/approle/wso2` in the
+   commands below, and set `secretRepositories.vault.properties.appRoleAuthPath=/auth/approle/wso2` in Step 2.
    ```
       vault write auth/approle/role/my-role \
          token_policies="kv-read-write" \
@@ -207,6 +211,8 @@ The file should be named according to your Operating System.
    secretRepositories.vault.properties.engineVersion=2
    secretRepositories.vault.properties.authType=APP_ROLE
    secretRepositories.vault.properties.roleId=<role id>
+   # Optional. AppRole auth path. Defaults to "/auth/approle". Eg: /auth/approle/wso2
+   secretRepositories.vault.properties.appRoleAuthPath=/auth/approle
     ```
 
    **Note:** In production, you should always use the vault address with TLS enabled.
