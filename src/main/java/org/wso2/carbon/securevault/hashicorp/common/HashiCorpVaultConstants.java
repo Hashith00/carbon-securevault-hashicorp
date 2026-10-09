@@ -41,7 +41,6 @@ public class HashiCorpVaultConstants {
     public static final String APP_ROLE_AUTH_PATH_PARAMETER = "secretRepositories.vault.properties.appRoleAuthPath";
 
     public static final int DEFAULT_ENGINE_VERSION = 2;
-    public static final String DEFAULT_APP_ROLE_AUTH_PATH = "/auth/approle";
 
     public static final String VALUE_PARAMETER = "value";
 

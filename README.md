@@ -211,8 +211,9 @@ The file should be named according to your Operating System.
    secretRepositories.vault.properties.engineVersion=2
    secretRepositories.vault.properties.authType=APP_ROLE
    secretRepositories.vault.properties.roleId=<role id>
-   # Optional. AppRole auth path. Defaults to "/auth/approle". Eg: /auth/approle/wso2
-   secretRepositories.vault.properties.appRoleAuthPath=/auth/approle
+   # Optional. Set this only if AppRole is enabled on a custom path in Vault.
+   # Leave it out if AppRole is enabled on the default path (/auth/approle).
+   # secretRepositories.vault.properties.appRoleAuthPath=/auth/approle/wso2
     ```
 
    **Note:** In production, you should always use the vault address with TLS enabled.

@@ -20,6 +20,7 @@ package org.wso2.carbon.securevault.hashicorp.repository;
 import com.bettercloud.vault.Vault;
 import com.bettercloud.vault.VaultConfig;
 import com.bettercloud.vault.VaultException;
+import com.bettercloud.vault.api.Auth;
 import com.bettercloud.vault.api.Logical;
 import com.bettercloud.vault.response.AuthResponse;
 import com.bettercloud.vault.response.LogicalResponse;
@@ -46,7 +47,6 @@ import java.util.Properties;
 
 import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.ADDRESS_PARAMETER;
 import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.APP_ROLE_AUTH_PATH_PARAMETER;
-import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.DEFAULT_APP_ROLE_AUTH_PATH;
 import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.DEFAULT_ENGINE_VERSION;
 import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.ENGINE_PATH_PARAMETER;
 import static org.wso2.carbon.securevault.hashicorp.common.HashiCorpVaultConstants.ENGINE_VERSION_PARAMETER;
@@ -65,6 +65,7 @@ public class HashiCorpSecretRepository implements SecretRepository {
     private static final Log LOG = LogFactory.getLog(HashiCorpSecretRepository.class);
     private static final String SLASH = "/";
     private static final String AUTH_PATH_PREFIX = "auth/";
+    private static final String AUTH_PATH_STRIP_CHARS = " " + SLASH;
     private static final int HTTP_OK = 200;
 
     private SecretRepository parentRepository;
@@ -355,7 +356,7 @@ public class HashiCorpSecretRepository implements SecretRepository {
 
             Vault vault = new Vault(config);
 
-            AuthResponse response = vault.auth().loginByAppRole(appRoleAuthPath, roleId, secretId);
+            AuthResponse response = loginByAppRole(vault.auth(), appRoleAuthPath, roleId, secretId);
 
             String accessTokenTemp = response.getAuthClientToken();
 
@@ -388,39 +389,54 @@ public class HashiCorpSecretRepository implements SecretRepository {
     }
 
     /**
-     * Returns the AppRole auth mount path in the form expected by the Vault driver. The path is configured in the
-     * form "/auth/{mount}" (Eg: "/auth/approle/wso2") and defaults to "/auth/approle". Since the Vault driver builds
-     * the login URL as "/v1/auth/{mount}/login", the surrounding slashes and the "auth/" prefix are removed.
+     * Logs in to HashiCorp Vault using AppRole. When no custom auth path is configured, the default AppRole auth
+     * path of the Vault driver is used.
      *
-     * @param authPath  The configured AppRole auth path.
-     * @return          The AppRole auth mount path relative to "auth/" (Eg: "approle/wso2").
+     * @param auth          Vault auth API.
+     * @param authPath      The AppRole auth mount path relative to "auth/", or null to use the default path.
+     * @param roleId        The AppRole role id.
+     * @param secretId      The AppRole secret id.
+     * @return              The auth response returned by Vault.
+     * @throws VaultException when the login fails.
      */
-    private String getConfiguredAppRoleAuthPath(String authPath) {
+    static AuthResponse loginByAppRole(Auth auth, String authPath, String roleId, String secretId)
+            throws VaultException {
 
-        if (StringUtils.isEmpty(StringUtils.strip(authPath))) {
-            authPath = DEFAULT_APP_ROLE_AUTH_PATH;
+        if (StringUtils.isEmpty(authPath)) {
+            return auth.loginByAppRole(roleId, secretId);
         }
-
-        String mountPath = toAppRoleMountPath(authPath);
-        if (StringUtils.isEmpty(mountPath)) {
-            LOG.warn("Invalid AppRole auth path: " + authPath + ". Using the default path: "
-                    + DEFAULT_APP_ROLE_AUTH_PATH);
-            mountPath = toAppRoleMountPath(DEFAULT_APP_ROLE_AUTH_PATH);
-        }
-        return mountPath;
+        return auth.loginByAppRole(authPath, roleId, secretId);
     }
 
     /**
-     * Removes the surrounding slashes and the "auth/" prefix from the given AppRole auth path.
+     * Returns the AppRole auth mount path in the form expected by the Vault driver. The path is configured in the
+     * form "/auth/{mount}" (Eg: "/auth/approle/wso2"). Since the Vault driver builds the login URL as
+     * "/v1/auth/{mount}/login", the surrounding slashes and the "auth/" prefix are removed.
      *
-     * @param authPath  The AppRole auth path (Eg: "/auth/approle/wso2").
-     * @return          The AppRole auth mount path relative to "auth/" (Eg: "approle/wso2").
+     * @param authPath  The configured AppRole auth path.
+     * @return          The AppRole auth mount path relative to "auth/" (Eg: "approle/wso2"), or null when no valid
+     *                  auth path is configured, so that the default AppRole auth path of the Vault driver is used.
      */
-    private String toAppRoleMountPath(String authPath) {
+    static String getConfiguredAppRoleAuthPath(String authPath) {
 
-        String mountPath = StringUtils.strip(authPath, " " + SLASH);
+        if (StringUtils.isEmpty(StringUtils.strip(authPath))) {
+            return null;
+        }
+
+        // Append a slash so that a path of only "/auth" is also matched by the "auth/" prefix.
+        String mountPath = StringUtils.strip(authPath, AUTH_PATH_STRIP_CHARS) + SLASH;
         if (mountPath.startsWith(AUTH_PATH_PREFIX)) {
-            mountPath = StringUtils.strip(mountPath.substring(AUTH_PATH_PREFIX.length()), " " + SLASH);
+            mountPath = mountPath.substring(AUTH_PATH_PREFIX.length());
+        }
+        mountPath = StringUtils.strip(mountPath, AUTH_PATH_STRIP_CHARS);
+
+        if (StringUtils.isEmpty(mountPath)) {
+            LOG.warn("Invalid AppRole auth path: " + authPath + ". Using the default AppRole auth path.");
+            return null;
+        }
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Using the custom AppRole auth path: " + authPath + ". Resolved AppRole auth mount path: "
+                    + mountPath);
         }
         return mountPath;
     }
